@@ -5,135 +5,158 @@ import "fmt"
 type record struct {
 	key int
 	value int
-	//left *record
-	//right *record
 	next *record
-	isnull bool
 }
 
 var (
-	minLoadFactor = 1/4
-	maxLoadFactor = 3/4
-	tableSize = 2
+	minLoadFactor = 0.25
+	maxLoadFactor = 0.75
+	defaultTableSize = 3
 )
 
-
-// Binary tree implementation
-//func (head *record) insert(node record) (*record){
-//	if head == nil {
-//		return &node
-//	} else {
-//		var iterator = head
-//		for true {
-//			if iterator.key > node.key {
-//				if iterator.left == nil {
-//					iterator.left = &node
-//					break
-//				} else {
-//					iterator = iterator.left
-//				}
-//			} else {
-//				if iterator.right == nil {
-//					iterator.right = &node
-//					break
-//				} else {
-//					iterator = iterator.right
-//				}
-//			}
-//		}
-//		return head
-//	}
-//}
-
 type hashTable struct {
-	table []record
-	nRecords int			// Number of records
+	table []*record
+	nRecords *int
 }
 
-func createHashTable() hashTable {
-	hashtable := hashTable{table: make([]record, tableSize), nRecords:tableSize}
-	for i:=0; i< tableSize; i++ {
-		hashtable.table[i].isnull = true
-	}
-	return hashtable
+func createHashTable(tableSize int) hashTable {
+	num := 0
+	return hashTable{table: make([]*record, tableSize), nRecords:&num}
 }
 
-func (h hashTable) hashFunction(key int) (int) {
-	return key%len(h.table)
+func CreateHashTable() hashTable {
+	num := 0
+	return hashTable{table: make([]*record, defaultTableSize), nRecords:&num}
 }
 
-func (h hashTable) put(key int, value int) {
-	index := h.hashFunction(key)
-	iterator := h.table[index]
-	prev := record{0, 0, nil, true}
-	for !iterator.isnull {
-		if iterator.key == key {	// Key already exists
-			iterator.value = value
-			prev.isnull = false
-			return
+func hashFunction(key int, size int) (int) {
+	return key%size
+}
+
+func (h hashTable) Display() {
+	fmt.Printf("----------%d elements-------\n", *h.nRecords)
+	for i, node := range h.table {
+		fmt.Printf("%d :", i)
+		for node != nil {
+			fmt.Printf("[%d, %d]->", node.key, node.value)
+			node = node.next
 		}
-		prev = iterator
-		iterator = *iterator.next
+		fmt.Println("nil")
 	}
-	node := record{key, value, nil, true}
-	iterator.next = &node
-	iterator.isnull = false
-	//h.checkLoadFactorAndUpdate()
 }
 
-func (h hashTable) get(key int) (bool, int) {
-	index := h.hashFunction(key)
+func (h hashTable) put(key int, value int) (bool){
+	index := hashFunction(key, len(h.table))
 	iterator := h.table[index]
-	for !iterator.isnull {
+	node := record{key, value, nil}
+	if iterator == nil {
+		h.table[index] = &node
+	} else {
+		prev := &record{0, 0, nil}
+		for iterator != nil {
+			if iterator.key == key { // Key already exists
+				iterator.value = value
+				return false
+			}
+			prev = iterator
+			iterator = iterator.next
+		}
+		prev.next = &node
+	}
+	*h.nRecords += 1
+	return true
+}
+
+func (h hashTable) Put(key int, value int) {
+	sizeChanged := h.put(key, value)
+	if sizeChanged == true {
+		h.checkLoadFactorAndUpdate()
+	}
+}
+
+func (h hashTable) Get(key int) (bool, int) {
+	index := hashFunction(key, len(h.table))
+	iterator := h.table[index]
+	for iterator != nil {
 		if iterator.key == key {	// Key already exists
 			return true, iterator.value
 		}
-		iterator = *iterator.next
+		iterator = iterator.next
 	}
-	return false, -1
-	//h.checkLoadFactorAndUpdate()
+	return false, 0
 }
 
 func (h hashTable) del(key int) (bool) {
-	index := h.hashFunction(key)
+	index := hashFunction(key, len(h.table))
 	iterator := h.table[index]
-	prev := record{-1, -1, nil, true}
-	for !iterator.isnull {
-		if iterator.key == key {
-			if prev.isnull == true {
-				h.table[index] = *iterator.next
-			} else {
-				prev.next = iterator.next
-				prev.isnull = iterator.isnull
-			}
-			return true
-		} else {
-			prev = iterator
-			iterator = *iterator.next
-		}
+	if iterator == nil {
+		return false
 	}
-	return false
-	//h.checkLoadFactorAndUpdate()
+	if iterator.key == key {
+		h.table[index] = iterator.next
+		*h.nRecords--
+		return true
+	} else {
+		prev := iterator
+		iterator = iterator.next
+		for iterator != nil {
+			if iterator.key == key {
+				prev.next = iterator.next
+				*h.nRecords--
+				return true
+			}
+			prev = iterator
+			iterator = iterator.next
+		}
+		return false
+	}
 }
 
-//func (h hashTable) checkLoadFactorAndUpdate() {
-//	loadFactor := h.loadFactor()
-//	if loadFactor < minLoadFactor {
-//		// Reduce the size
-//	}
-//
-//	if loadFactor > maxLoadFactor {
-//		// Increase the size
-//	}
-//}
+func (h hashTable) Del(key int) (bool) {
+	sizeChanged := h.del(key)
+	if sizeChanged == true {
+		h.checkLoadFactorAndUpdate()
+	}
+	return sizeChanged
+}
 
-//func (h hashTable) loadFactor() (int) {
-//	return h.nRecords/len(h.table)
-//}
+func (h hashTable) getLoadFactor() (float64) {
+	return float64(*h.nRecords)/float64(len(h.table))
+}
 
-func main() {
-	hashtable := createHashTable()
-	hashtable.put(1, 2)
-	fmt.Println(hashtable.get(1))
-	hashtable.del(1)
+func (h hashTable) checkLoadFactorAndUpdate() {
+	if *h.nRecords == 0 {
+		return
+	} else {
+		loadFactor := h.getLoadFactor()
+		//fmt.Println(loadFactor, minLoadFactor, maxLoadFactor)
+		if loadFactor < minLoadFactor || loadFactor > maxLoadFactor {
+			hash := createHashTable(*h.nRecords*2)
+			for _, record := range h.table {
+				for record != nil {
+					hash.put(record.key, record.value)
+					record = record.next
+				}
+			}
+			fmt.Println("**-----------------------")
+			copy(h.table, hash.table)
+			hash.Display()
+			h.Display()
+		}
+	}
+}
+
+func main(){
+	h := CreateHashTable()
+	//h.Display()
+	h.Put(1,2)
+	//h.Display()
+	h.Put(2,3)
+	//h.Display()
+	h.Put(3,4)
+	//h.Display()
+	h.Put(4,5)
+	//h.Display()
+	h.Put(5,6)
+	//h.Display()
 }
