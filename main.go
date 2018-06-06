@@ -2,40 +2,50 @@ package main
 
 import "fmt"
 
-type record struct {
-	key int
-	value int
-	next *record
-}
-
 var (
 	minLoadFactor = 0.25
 	maxLoadFactor = 0.75
 	defaultTableSize = 3
 )
 
-type hashTable struct {
-	table []*record
+type Record struct {
+	key int
+	value int
+	next *Record
+}
+
+type Hash struct {
+	records []*Record
+}
+
+type HashTable struct {
+	table *Hash
 	nRecords *int
 }
 
-func createHashTable(tableSize int) hashTable {
+// createHashTable: Called by checkLoadFactorAndUpdate when creating a new hash, for internal use only.
+func createHashTable(tableSize int) HashTable {
 	num := 0
-	return hashTable{table: make([]*record, tableSize), nRecords:&num}
+	hash := Hash{make([]*Record, tableSize)}
+	return HashTable{table: &hash, nRecords:&num}
 }
 
-func CreateHashTable() hashTable {
+// CreateHashTable: Called by the user to create a hashtable.
+func CreateHashTable() HashTable {
 	num := 0
-	return hashTable{table: make([]*record, defaultTableSize), nRecords:&num}
+	hash := Hash{make([]*Record, defaultTableSize)}
+	return HashTable{table: &hash, nRecords:&num}
 }
 
+// hashFunction: Used to calculate the index of record within the slice
 func hashFunction(key int, size int) (int) {
 	return key%size
 }
 
-func (h hashTable) Display() {
+// Display: Print the hashtable in a legible format (publicly callable)
+func (h *HashTable) Display() {
 	fmt.Printf("----------%d elements-------\n", *h.nRecords)
-	for i, node := range h.table {
+	for i, node := range h.table.records {
 		fmt.Printf("%d :", i)
 		for node != nil {
 			fmt.Printf("[%d, %d]->", node.key, node.value)
@@ -45,14 +55,15 @@ func (h hashTable) Display() {
 	}
 }
 
-func (h hashTable) put(key int, value int) (bool){
-	index := hashFunction(key, len(h.table))
-	iterator := h.table[index]
-	node := record{key, value, nil}
+// put: inserts a key into the hash table, for internal use only
+func (h *HashTable) put(key int, value int) (bool){
+	index := hashFunction(key, len(h.table.records))
+	iterator := h.table.records[index]
+	node := Record{key, value, nil}
 	if iterator == nil {
-		h.table[index] = &node
+		h.table.records[index] = &node
 	} else {
-		prev := &record{0, 0, nil}
+		prev := &Record{0, 0, nil}
 		for iterator != nil {
 			if iterator.key == key { // Key already exists
 				iterator.value = value
@@ -67,16 +78,18 @@ func (h hashTable) put(key int, value int) (bool){
 	return true
 }
 
-func (h hashTable) Put(key int, value int) {
+// Put: inserts a key into the hash table (publicly callable)
+func (h *HashTable) Put(key int, value int) {
 	sizeChanged := h.put(key, value)
 	if sizeChanged == true {
 		h.checkLoadFactorAndUpdate()
 	}
 }
 
-func (h hashTable) Get(key int) (bool, int) {
-	index := hashFunction(key, len(h.table))
-	iterator := h.table[index]
+// Get: Retrieve a value for a key from the hash table (publicly callable)
+func (h *HashTable) Get(key int) (bool, int) {
+	index := hashFunction(key, len(h.table.records))
+	iterator := h.table.records[index]
 	for iterator != nil {
 		if iterator.key == key {	// Key already exists
 			return true, iterator.value
@@ -86,14 +99,15 @@ func (h hashTable) Get(key int) (bool, int) {
 	return false, 0
 }
 
-func (h hashTable) del(key int) (bool) {
-	index := hashFunction(key, len(h.table))
-	iterator := h.table[index]
+// del: remove a key-value record from the hash table, for internal use only
+func (h *HashTable) del(key int) (bool) {
+	index := hashFunction(key, len(h.table.records))
+	iterator := h.table.records[index]
 	if iterator == nil {
 		return false
 	}
 	if iterator.key == key {
-		h.table[index] = iterator.next
+		h.table.records[index] = iterator.next
 		*h.nRecords--
 		return true
 	} else {
@@ -112,7 +126,8 @@ func (h hashTable) del(key int) (bool) {
 	}
 }
 
-func (h hashTable) Del(key int) (bool) {
+// Del: remove a key-value record from the hash table (publicly available)
+func (h *HashTable) Del(key int) (bool) {
 	sizeChanged := h.del(key)
 	if sizeChanged == true {
 		h.checkLoadFactorAndUpdate()
@@ -120,43 +135,39 @@ func (h hashTable) Del(key int) (bool) {
 	return sizeChanged
 }
 
-func (h hashTable) getLoadFactor() (float64) {
-	return float64(*h.nRecords)/float64(len(h.table))
+// getLoadFactor: calculate the loadfactor for the hashtable
+// Calculated as: number of records stored / length of underlying slice used
+func (h *HashTable) getLoadFactor() (float64) {
+	return float64(*h.nRecords)/float64(len(h.table.records))
 }
 
-func (h hashTable) checkLoadFactorAndUpdate() {
+// checkLoadFactorAndUpdate: if 0.25 > loadfactor or 0.75 < loadfactor,
+// update the underlying slice to have have loadfactor close to 0.5
+func (h *HashTable) checkLoadFactorAndUpdate() {
 	if *h.nRecords == 0 {
 		return
 	} else {
 		loadFactor := h.getLoadFactor()
-		//fmt.Println(loadFactor, minLoadFactor, maxLoadFactor)
-		if loadFactor < minLoadFactor || loadFactor > maxLoadFactor {
-			hash := createHashTable(*h.nRecords*2)
-			for _, record := range h.table {
+		if loadFactor < minLoadFactor {
+			fmt.Println("** Loadfactor below limit, reducing hashtable size **")
+			hash := createHashTable(len(h.table.records)/2)
+			for _, record := range h.table.records {
 				for record != nil {
 					hash.put(record.key, record.value)
 					record = record.next
 				}
 			}
-			fmt.Println("**-----------------------")
-			copy(h.table, hash.table)
-			hash.Display()
-			h.Display()
+			h.table = hash.table
+		} else if loadFactor > maxLoadFactor {
+			fmt.Println("** Loadfactor above limit, increasing hashtable size **")
+			hash := createHashTable(*h.nRecords*2)
+			for _, record := range h.table.records {
+				for record != nil {
+					hash.put(record.key, record.value)
+					record = record.next
+				}
+			}
+			h.table = hash.table
 		}
 	}
-}
-
-func main(){
-	h := CreateHashTable()
-	//h.Display()
-	h.Put(1,2)
-	//h.Display()
-	h.Put(2,3)
-	//h.Display()
-	h.Put(3,4)
-	//h.Display()
-	h.Put(4,5)
-	//h.Display()
-	h.Put(5,6)
-	//h.Display()
 }
